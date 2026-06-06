@@ -50,7 +50,7 @@ def main(args):
     # Start analysis
     print("\nStarting tunnel effect analysis...")
     analyzer = Analyzer(model, device)
-    analysis_results = analyzer.analyze(dataset, num_classes=num_classes, probe=args.probe, output_dir=result_dir / "analysis")
+    analysis_results = analyzer.analyze(dataset, num_classes=num_classes, probe=args.probe, output_dir=result_dir)
 
 
 if __name__ == "__main__":

@@ -1,5 +1,7 @@
 from typing import Dict, Tuple
 
+import traceback
+
 import numpy as np
 import torch
 
@@ -37,7 +39,9 @@ def compute_numerical_rank(features: torch.Tensor, threshold_ratio: float = 1e-3
     else:
         try:
             singular_vals = torch.linalg.svdvals(x)
-        except RuntimeError:
+        except RuntimeError as e:
+            print(f"torch.linalg.svdvals failed on shape {x.shape} device {x.device}: {e}")
+            traceback.print_exc()
             singular_vals = torch.from_numpy(
                 np.linalg.svd(x.cpu().numpy(), compute_uv=False)
             ).to(device)
@@ -166,60 +170,60 @@ def compute_energy(features: torch.Tensor, topk: int=None, device: torch.device 
 #     return float(np.exp(H))
 
 
-def _flatten_tensor_list(tensors):
-    return torch.cat([t.flatten() for t in tensors]).float()
+# def _flatten_tensor_list(tensors):
+#     return torch.cat([t.flatten() for t in tensors]).float()
 
 
-def compute_gwa(model: torch.nn.Module, loader, device: torch.device, loss_fn=None, max_batches: int = None):
-    """Compute gradient-weight alignment (cosine) per weight-containing layer.
+# def compute_gwa(model: torch.nn.Module, loader, device: torch.device, loss_fn=None, max_batches: int = None):
+#     """Compute gradient-weight alignment (cosine) per weight-containing layer.
 
-    Returns dict {param_name: cosine_similarity} for parameters that have 'weight' in the name.
-    This computes the average gradient across the loader (batch-weighted).
-    """
-    if loss_fn is None:
-        loss_fn = torch.nn.CrossEntropyLoss()
+#     Returns dict {param_name: cosine_similarity} for parameters that have 'weight' in the name.
+#     This computes the average gradient across the loader (batch-weighted).
+#     """
+#     if loss_fn is None:
+#         loss_fn = torch.nn.CrossEntropyLoss()
 
-    model = model.to(device)
-    model.train()
-    # Map parameter names to zero tensors for accumulating gradients
-    param_map = {name: p for name, p in model.named_parameters() if 'weight' in name}
-    acc_grads = {name: torch.zeros_like(p.data, device=device) for name, p in param_map.items()}
-    total_samples = 0
+#     model = model.to(device)
+#     model.train()
+#     # Map parameter names to zero tensors for accumulating gradients
+#     param_map = {name: p for name, p in model.named_parameters() if 'weight' in name}
+#     acc_grads = {name: torch.zeros_like(p.data, device=device) for name, p in param_map.items()}
+#     total_samples = 0
 
-    for i, (x, y) in enumerate(loader):
-        if max_batches is not None and i >= max_batches:
-            break
-        x = x.to(device)
-        y = y.to(device)
-        model.zero_grad()
-        out = model(x)
-        loss = loss_fn(out, y)
-        loss.backward()
-        batch_size = x.shape[0]
-        total_samples += batch_size
-        for name, p in param_map.items():
-            if p.grad is not None:
-                acc_grads[name] += p.grad.detach() * batch_size
+#     for i, (x, y) in enumerate(loader):
+#         if max_batches is not None and i >= max_batches:
+#             break
+#         x = x.to(device)
+#         y = y.to(device)
+#         model.zero_grad()
+#         out = model(x)
+#         loss = loss_fn(out, y)
+#         loss.backward()
+#         batch_size = x.shape[0]
+#         total_samples += batch_size
+#         for name, p in param_map.items():
+#             if p.grad is not None:
+#                 acc_grads[name] += p.grad.detach() * batch_size
 
-    if total_samples == 0:
-        return {name: 0.0 for name in param_map.keys()}
+#     if total_samples == 0:
+#         return {name: 0.0 for name in param_map.keys()}
 
-    # average gradients
-    for name in acc_grads:
-        acc_grads[name] = acc_grads[name] / float(total_samples)
+#     # average gradients
+#     for name in acc_grads:
+#         acc_grads[name] = acc_grads[name] / float(total_samples)
 
-    # compute cosine similarity per param (weight)
-    gwa = {}
-    for name, p in param_map.items():
-        w = p.data.detach().to(device).float()
-        g = acc_grads[name].to(device).float()
-        w_flat = w.flatten()
-        g_flat = g.flatten()
-        denom = (w_flat.norm() * g_flat.norm()).item()
-        if denom == 0:
-            gwa[name] = 0.0
-        else:
-            gwa[name] = float((w_flat @ g_flat).item() / denom)
+#     # compute cosine similarity per param (weight)
+#     gwa = {}
+#     for name, p in param_map.items():
+#         w = p.data.detach().to(device).float()
+#         g = acc_grads[name].to(device).float()
+#         w_flat = w.flatten()
+#         g_flat = g.flatten()
+#         denom = (w_flat.norm() * g_flat.norm()).item()
+#         if denom == 0:
+#             gwa[name] = 0.0
+#         else:
+#             gwa[name] = float((w_flat @ g_flat).item() / denom)
 
-    model.zero_grad()
-    return gwa
+#     model.zero_grad()
+#     return gwa

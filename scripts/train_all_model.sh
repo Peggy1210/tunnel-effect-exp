@@ -1,7 +1,7 @@
 #!/bin/bash
 
-models=("resnet34")
-optimizers=("adam" "adamw")
+models=("mlp12" "vgg19" "resnet34")
+optimizers=("fullbatch_gd" "sgd" "sgd_momentum" "adam" "adamw" "muon")
 datasets=("cifar10")
 
 for model in "${models[@]}"; do
